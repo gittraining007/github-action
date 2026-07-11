@@ -1,0 +1,4 @@
+welcome to the git, GitHub actions and Azure devops
+
+
+Week 1: Understanding the basics of Git
