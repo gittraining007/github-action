@@ -1,9 +1,13 @@
 name: CI Pipeline
 
 on:
+  push:
+    branches:
+      - main
+      - feature/*
   pull_request:
     branches:
-      - feature/webapp
+      - main
 
 jobs:
 
