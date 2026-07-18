@@ -3,9 +3,7 @@ name: Deploy Website
 on:
 
   workflow_run:
-
-    workflows: ["CI Pipeline"]
-
+    workflows: ["CI-Pipeline"]
     types:
       - completed
 
