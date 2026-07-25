@@ -55,8 +55,6 @@ jobs:
   deploy:
     needs: wait-for-ci
     runs-on: ubuntu-latest
-    environment:
-      name: Production
     permissions:
       id-token: write
       contents: read
