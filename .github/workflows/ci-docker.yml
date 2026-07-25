@@ -10,7 +10,7 @@ on:
       - feature/docker
 
 env:
-  ACR_NAME: myacr
+  ACR_NAME: acr007
   IMAGE_NAME: sample-webapp
 
 jobs:
