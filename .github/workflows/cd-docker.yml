@@ -1,43 +1,76 @@
 name: CD Docker Pipeline
 
 on:
-  workflow_run:
-    workflows:
-      - "CI Docker Pipeline"
-    types:
-      - completed
+  push:
+    branches:
+      - feature/docker
 
 env:
   ACR_NAME: acr007
   IMAGE_NAME: sample-webapp
 
 jobs:
+  wait-for-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI Docker Pipeline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.sha;
+            
+            let ciPassed = false;
+            const maxAttempts = 60;
+            let attempt = 0;
+            
+            while (attempt < maxAttempts && !ciPassed) {
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: 'ci-docker.yml',
+                head_sha: sha,
+                status: 'completed'
+              });
+              
+              if (runs.data.workflow_runs.length > 0) {
+                const latestRun = runs.data.workflow_runs[0];
+                if (latestRun.conclusion === 'success') {
+                  console.log('CI Docker Pipeline passed!');
+                  ciPassed = true;
+                } else {
+                  throw new Error(`CI Docker Pipeline failed with conclusion: ${latestRun.conclusion}`);
+                }
+              } else {
+                console.log(`Attempt ${attempt + 1}/${maxAttempts}: CI not completed yet, waiting...`);
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+              }
+              attempt++;
+            }
+            
+            if (!ciPassed) {
+              throw new Error('Timeout waiting for CI Docker Pipeline to complete');
+            }
 
   deploy:
-
-    if: github.event.workflow_run.conclusion == 'success'
-
+    needs: wait-for-ci
     runs-on: ubuntu-latest
-
     environment:
       name: Production
-
     permissions:
       id-token: write
       contents: read
-
     steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Azure Login (OIDC)
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-    - name: Deploy Container
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: sample-webapp
-        images: |
-          ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
+      - name: Deploy Container
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: sample-webapp
+          images: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
