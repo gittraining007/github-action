@@ -9,9 +9,7 @@ on:
     branches:
       - feature/docker
 
-env:
-  ACR_NAME: acr007
-  IMAGE_NAME: sample-webapp
+
 
 jobs:
   build:
@@ -40,7 +38,7 @@ jobs:
 
     - name: Build Docker Image
       run: |
-        docker build -t $IMAGE_NAME:${{ github.sha }} .
+        docker build -t ${{vars.IMAGE_NAME}}:${{ github.sha }} .
 
     - name: Azure Login (OIDC)
       uses: azure/login@v2
@@ -51,14 +49,14 @@ jobs:
 
     - name: Login to Azure Container Registry
       run: |
-        az acr login --name $ACR_NAME
+        az acr login --name ${{vars.ACR_NAME}}
 
     - name: Tag Docker Image
       run: |
-        docker tag $IMAGE_NAME:${{ github.sha }} \
-        $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+        docker tag ${{vars.IMAGE_NAME}}:${{ github.sha }} \
+        ${{vars.ACR_NAME}}.azurecr.io/${{vars.IMAGE_NAME}}:${{ github.sha }}
 
     - name: Push Docker Image
       run: |
         docker push \
-        $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+        ${{vars.ACR_NAME}}.azurecr.io/${{vars.IMAGE_NAME}}:${{ github.sha }}
