@@ -3,12 +3,14 @@ name: CD Docker Pipeline
 on:
   workflow_run:
     workflows:
-      - CI Docker Pipeline
+      - "CI Docker Pipeline"
     types:
       - completed
+    branches:
+      - feature/docker
 
 env:
-  ACR_NAME: myacr
+  ACR_NAME: acr007
   IMAGE_NAME: sample-webapp
 
 jobs:
@@ -40,4 +42,4 @@ jobs:
       with:
         app-name: sample-webapp
         images: |
-          myacr.azurecr.io/sample-webapp:${{ github.event.workflow_run.head_sha }}
+          ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
