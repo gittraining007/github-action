@@ -6,8 +6,6 @@ on:
       - "CI Docker Pipeline"
     types:
       - completed
-    branches:
-      - feature/docker  # Add your branch name here
 
 env:
   ACR_NAME: acr007
