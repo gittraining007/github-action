@@ -9,15 +9,24 @@ env:
   CHART_PATH: helm
   RELEASE_NAME: sample-webapp
   NAMESPACE: sample-app
+  ACR_NAME: acr007
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -29,14 +38,21 @@ jobs:
         with:
           version: 'v3.11.0'
 
-      - name: Configure kubeconfig
-        # Expects the KUBECONFIG as a base64-encoded secret in KUBE_CONFIG_DATA
+      - name: Get AKS credentials
+        # Expects AZURE_RESOURCE_GROUP and AKS_CLUSTER_NAME in secrets
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
-        env:
-          KUBECONFIG: $HOME/.kube/config
+          echo "Fetching AKS credentials for ${{ secrets.AKS_CLUSTER_NAME }} in resource group ${{ secrets.AZURE_RESOURCE_GROUP }}"
+          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }} --overwrite-existing
+
+      - name: (Optional) Attach ACR to AKS
+        # Attach ACR to AKS so the cluster can pull from the registry (requires proper permissions)
+        run: |
+          if [ -n "${{ env.ACR_NAME }}" ] && [ -n "${{ secrets.AZURE_RESOURCE_GROUP }}" ] && [ -n "${{ secrets.AKS_CLUSTER_NAME }}" ]; then
+            echo "Attaching ACR '${{ env.ACR_NAME }}' to AKS cluster '${{ secrets.AKS_CLUSTER_NAME }}' (may be a no-op if already attached)"
+            az aks update -g ${{ secrets.AZURE_RESOURCE_GROUP }} -n ${{ secrets.AKS_CLUSTER_NAME }} --attach-acr ${{ env.ACR_NAME }} || true
+          else
+            echo "Skipping ACR attach because required values are missing. Ensure ACR_NAME env and AKS secrets are set."
+          fi
 
       - name: Show kube context
         run: kubectl config current-context
@@ -48,11 +64,10 @@ jobs:
           fi
 
       - name: Helm upgrade --install
+        env:
+          IMAGE_REPO: ${{ secrets.IMAGE_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          # image.repository and image.tag are set via --set; adjust keys to match your chart's values.yaml
-          IMAGE_REPO=${{ secrets.IMAGE_REPOSITORY }}
-          IMAGE_TAG=${{ github.sha }}
-
           if [ -z "$IMAGE_REPO" ]; then
             echo "WARNING: secrets.IMAGE_REPOSITORY is empty. Set the repository via secrets or modify the workflow to use a different value source."
           fi
