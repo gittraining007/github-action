@@ -1,0 +1,81 @@
+# Triggers: push to feature/docker, PRs targeting main
+trigger:
+  branches:
+    include:
+      - feature/docker
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  # Replace if you use different names
+  ACR_NAME: acr007
+  IMAGE_NAME: sample-webapp
+
+stages:
+- stage: Build
+  displayName: 'CI Docker Pipeline'
+  jobs:
+  - job: BuildAndPush
+    displayName: 'Build, Test, Build&Push Docker'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: NodeTool@0
+      displayName: 'Setup Node 20'
+      inputs:
+        versionSpec: '20'
+
+    - script: npm install
+      displayName: 'Install Dependencies'
+
+    - script: npm test
+      displayName: 'Run Unit Tests'
+
+    # Build & push using Docker task; requires an Azure Container Registry service connection
+    - task: Docker@2
+      displayName: 'Build and Push Docker image to ACR'
+      inputs:
+        command: buildAndPush
+        containerRegistry: 'ACRServiceConnection'    # <-- replace with your Azure Container Registry service connection name
+        repository: $(ACR_NAME).azurecr.io/$(IMAGE_NAME)
+        dockerfile: Dockerfile
+        tags: |
+          $(Build.SourceVersion)
+
+- stage: Deploy
+  displayName: 'CD Docker Pipeline'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: DeployToWebApp
+    displayName: 'Deploy image to Azure Web App'
+    environment: 'sample-webapp07'   # optional: pipeline environment
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          # Login / use same Azure service connection (ARM) used to manage the Web App
+          - task: AzureCLI@2
+            displayName: 'Ensure ACR accessible (optional)'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'   # <-- replace with your Azure Resource Manager service connection name
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "Confirming access to ACR..."
+                az acr show --name $(ACR_NAME) --query loginServer -o tsv
+
+          # Deploy to Azure Web App for Containers. Requires service connection with rights to the Web App.
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy Container to Azure Web App'
+            inputs:
+              azureSubscription: 'AzureServiceConnection'   # <-- replace with your Azure Resource Manager service connection name
+              appName: 'sample-webapp07'
+              imageName: '$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(Build.SourceVersion)'
